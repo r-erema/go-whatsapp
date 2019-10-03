@@ -20,7 +20,7 @@ func TestExpandWithoutAppInfo(t *testing.T) {
 
 func TestExpandWithAppInfo(t *testing.T) {
 	//AppInfo
-	ss, err := Expand([]byte("Hallo ich bin Marcel"), 112, "WhatsApp Image Keys")
+	ss, err := Expand([]byte("Hallo ich build Marcel"), 112, "WhatsApp Image Keys")
 	if err != nil {
 		t.Fail()
 	}
