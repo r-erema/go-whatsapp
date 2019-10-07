@@ -16,16 +16,17 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
 
 var apiHost = os.Getenv("WAPI_HOST")
 
-const STATIC_DIR  = "remote_interaction/static/"
-const STATIC_URL_PATH  = "/static/"
+const STATIC_DIR = "remote_interaction/static/"
+const STATIC_URL_PATH = "/static/"
 
-func main()  {
+func main() {
 
 	if apiHost == "" {
 		log.Fatalf("Env var `WAPI_HOST` not set")
@@ -34,12 +35,11 @@ func main()  {
 	router := mux.NewRouter().StrictSlash(true)
 	router.
 		PathPrefix(STATIC_URL_PATH).
-		Handler(http.StripPrefix(STATIC_URL_PATH, http.FileServer(http.Dir("./" + STATIC_DIR))))
+		Handler(http.StripPrefix(STATIC_URL_PATH, http.FileServer(http.Dir("./"+STATIC_DIR))))
 
 	router.HandleFunc("/send-message/", sendMessage).Methods("POST")
 	router.HandleFunc("/register-session/", registerSession).Methods("POST")
 	router.HandleFunc("/get-qr-code/", getQrCode).Methods("GET")
-
 
 	log.Println("Api started listening", apiHost, "...")
 	err := http.ListenAndServe(os.Getenv("WAPI_HOST"), router)
@@ -47,9 +47,10 @@ func main()  {
 		log.Fatalf("error saving session: %v\n", err)
 	}
 }
+
 type waHandler struct {
-	c *whatsapp.Conn
-	sessionName string
+	c             *whatsapp.Conn
+	sessionName   string
 	initTimestamp uint64
 }
 
@@ -91,11 +92,11 @@ func (handler *waHandler) HandleTextMessage(message whatsapp.TextMessage) {
 	webhookUrl := webhook + handler.sessionName
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	resp, err := http.PostForm(webhookUrl, url.Values{
-		"timestamp": {strconv.FormatUint(message.Info.Timestamp, 10)},
-		"message_id": {message.Info.Id},
-		"message_jid": {message.Info.RemoteJid},
+		"timestamp":         {strconv.FormatUint(message.Info.Timestamp, 10)},
+		"message_id":        {message.Info.Id},
+		"message_jid":       {message.Info.RemoteJid},
 		"quoted_message_id": {message.Info.QuotedMessageID},
-		"text": {message.Text},
+		"text":              {message.Text},
 	})
 
 	if nil != err {
@@ -115,8 +116,8 @@ func (handler *waHandler) HandleTextMessage(message whatsapp.TextMessage) {
 }
 
 type SendMessageRequest struct {
-	Chat_id string `json:"chat_id"`
-	Text string `json:"text"`
+	Chat_id      string `json:"chat_id"`
+	Text         string `json:"text"`
 	Session_name string `json: session_name`
 }
 
@@ -222,13 +223,19 @@ func registerSession(responseWriter http.ResponseWriter, request *http.Request) 
 		return
 	}
 
-	gettingMessages(wac, msgReq.SessionId)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		wg.Done()
+		gettingMessages(wac, msgReq.SessionId)
+	}()
+	wg.Wait()
 }
 
-func getQrCode(responseWriter http.ResponseWriter, request *http.Request)  {
+func getQrCode(responseWriter http.ResponseWriter, request *http.Request) {
 	/*
-	responseWriter.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(file)))
-	http.ServeFile(responseWriter, request, file)*/
+		responseWriter.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(file)))
+		http.ServeFile(responseWriter, request, file)*/
 
 	vars := request.URL.Query()
 	val, ok := vars["session_name"]
@@ -236,7 +243,7 @@ func getQrCode(responseWriter http.ResponseWriter, request *http.Request)  {
 		sessionName := val[0]
 		qrImgPath := resolveQrCodesURLPath(sessionName)
 		t := template.Must(template.ParseFiles("remote_interaction/static/qr-code.html"))
-		data := struct {QrCodeImgPath, SessionName string}{qrImgPath, sessionName}
+		data := struct{ QrCodeImgPath, SessionName string }{qrImgPath, sessionName}
 		if err := t.ExecuteTemplate(responseWriter, "qr-code.html", data); err != nil {
 			http.Error(responseWriter, err.Error(), http.StatusInternalServerError)
 		}
