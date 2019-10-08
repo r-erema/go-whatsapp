@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -12,10 +13,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -91,13 +90,8 @@ func (handler *waHandler) HandleTextMessage(message whatsapp.TextMessage) {
 
 	webhookUrl := webhook + handler.sessionName
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	resp, err := http.PostForm(webhookUrl, url.Values{
-		"timestamp":         {strconv.FormatUint(message.Info.Timestamp, 10)},
-		"message_id":        {message.Info.Id},
-		"message_jid":       {message.Info.RemoteJid},
-		"quoted_message_id": {message.Info.QuotedMessageID},
-		"text":              {message.Text},
-	})
+	requestBody, err := json.Marshal(&message)
+	resp, err := http.Post(webhookUrl, "application/json", bytes.NewBuffer(requestBody))
 
 	if nil != err {
 		fmt.Println("errorination happened getting the response", err)
