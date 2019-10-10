@@ -145,7 +145,14 @@ func gettingMessages(wac *whatsapp.Conn, sessionName string) {
 }
 
 func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
-	wac, err := whatsapp.NewConn(20 * time.Second)
+
+	if !wac.Info.Connected {
+		wac, err_conn = whatsapp.NewConn(20 * time.Second)
+		if err_conn != nil {
+			fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
+			return
+		}
+	}
 
 	decoder := json.NewDecoder(request.Body)
 	var msgReq SendMessageRequest
@@ -154,15 +161,12 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 		fmt.Errorf("Can't decode request: %v\n", error)
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err)
-		return
-	}
-
-	err = Login(wac, msgReq.Session_name)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error logging in: %v\n", err)
-		return
+	if !wac.IsLoggedIn() {
+		err := Login(wac, msgReq.Session_name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error logging in: %v\n", err)
+			return
+		}
 	}
 
 	<-time.After(3 * time.Second)
@@ -183,23 +187,34 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 	wac.Send(message)
 }
 
+var wac = &whatsapp.Conn{Info: &whatsapp.Info{Connected: false}}
+var err_conn error
+
 func registerSession(responseWriter http.ResponseWriter, request *http.Request) {
 
-	wac, err := whatsapp.NewConn(20 * time.Second)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err)
-		return
+	if !wac.Info.Connected {
+		wac, err_conn = whatsapp.NewConn(20 * time.Second)
+		if err_conn != nil {
+			fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
+			return
+		}
 	}
 
 	decoder := json.NewDecoder(request.Body)
 	var msgReq RegisterSessionRequest
-	err = decoder.Decode(&msgReq)
+	err := decoder.Decode(&msgReq)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Can't decode request: %v\n", err)
 		return
 	}
 
-	err = Login(wac, msgReq.SessionId)
+	if !wac.IsLoggedIn() {
+		err = Login(wac, msgReq.SessionId)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error logging in: %v\n", err)
+			return
+		}
+	}
 
 	json := simplejson.New()
 	json.Set("ok", true)

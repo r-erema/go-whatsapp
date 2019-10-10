@@ -93,6 +93,10 @@ type Conn struct {
 	loginSessionLock sync.RWMutex
 }
 
+func (wac *Conn) IsLoggedIn() bool {
+	return wac.loggedIn
+}
+
 type websocketWrapper struct {
 	sync.Mutex
 	conn  *websocket.Conn
