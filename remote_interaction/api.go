@@ -146,19 +146,35 @@ func gettingMessages(wac *whatsapp.Conn, sessionName string) {
 
 func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 
+	decoder := json.NewDecoder(request.Body)
+	var msgReq SendMessageRequest
+	err := decoder.Decode(&msgReq)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can't decode request: %v\n", err)
+		return
+	}
+
+	wac, ok := wacs[msgReq.Session_name]
+
+	if ok {
+		if !wac.IsConnected() {
+			wac, err_conn = whatsapp.NewConn(20 * time.Second)
+			if err_conn != nil {
+				fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
+				return
+			}
+		}
+	} else {
+		wac, err_conn = whatsapp.NewConn(20 * time.Second)
+		wacs[msgReq.Session_name] = wac
+	}
+
 	if !wac.Info.Connected {
 		wac, err_conn = whatsapp.NewConn(20 * time.Second)
 		if err_conn != nil {
 			fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
 			return
 		}
-	}
-
-	decoder := json.NewDecoder(request.Body)
-	var msgReq SendMessageRequest
-	error := decoder.Decode(&msgReq)
-	if error != nil {
-		fmt.Errorf("Can't decode request: %v\n", error)
 	}
 
 	if !wac.IsLoggedIn() {
@@ -187,18 +203,11 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 	wac.Send(message)
 }
 
-var wac = &whatsapp.Conn{Info: &whatsapp.Info{Connected: false}}
+var wacs = make(map[string]*whatsapp.Conn)
+
 var err_conn error
 
 func registerSession(responseWriter http.ResponseWriter, request *http.Request) {
-
-	if !wac.Info.Connected {
-		wac, err_conn = whatsapp.NewConn(20 * time.Second)
-		if err_conn != nil {
-			fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
-			return
-		}
-	}
 
 	decoder := json.NewDecoder(request.Body)
 	var msgReq RegisterSessionRequest
@@ -207,6 +216,30 @@ func registerSession(responseWriter http.ResponseWriter, request *http.Request) 
 		fmt.Fprintf(os.Stderr, "Can't decode request: %v\n", err)
 		return
 	}
+
+	wac, ok := wacs[msgReq.SessionId]
+
+	if ok {
+		if !wac.IsConnected() {
+			wac, err_conn = whatsapp.NewConn(20 * time.Second)
+			if err_conn != nil {
+				fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
+				return
+			}
+		}
+	} else {
+		wac, err_conn = whatsapp.NewConn(20 * time.Second)
+		wacs[msgReq.SessionId] = wac
+	}
+
+	/*if !ok || !wac.Info.Connected {
+		wac, err_conn = whatsapp.NewConn(20 * time.Second)
+		if err_conn != nil {
+			fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
+			return
+		}
+		wacs[msgReq.SessionId] = wac
+	}*/
 
 	if !wac.IsLoggedIn() {
 		err = Login(wac, msgReq.SessionId)

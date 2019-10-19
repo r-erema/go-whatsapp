@@ -96,6 +96,9 @@ type Conn struct {
 func (wac *Conn) IsLoggedIn() bool {
 	return wac.loggedIn
 }
+func (wac *Conn) IsConnected() bool {
+	return wac.connected
+}
 
 type websocketWrapper struct {
 	sync.Mutex
