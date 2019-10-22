@@ -8,6 +8,7 @@ import (
 	"github.com/Rhymen/go-whatsapp"
 	"github.com/Rhymen/go-whatsapp/binary/proto"
 	"github.com/bitly/go-simplejson"
+	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"html/template"
 	"io/ioutil"
@@ -25,10 +26,17 @@ var apiHost = os.Getenv("WAPI_HOST")
 const STATIC_DIR = "remote_interaction/static/"
 const STATIC_URL_PATH = "/static/"
 
+var redisClient *redis.Client
+
 func main() {
 
 	if apiHost == "" {
 		log.Fatalf("Env var `WAPI_HOST` not set")
+	}
+
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		panic("Env var `REDIS_HOST` not set")
 	}
 
 	router := mux.NewRouter().StrictSlash(true)
@@ -40,8 +48,17 @@ func main() {
 	router.HandleFunc("/register-session/", registerSession).Methods("POST")
 	router.HandleFunc("/get-qr-code/", getQrCode).Methods("GET")
 
+	redisClient = redis.NewClient(&redis.Options{
+		Addr: redisHost,
+	})
+	pong, err := redisClient.Ping().Result()
+	if err != nil {
+		log.Fatalf("Redis error: %v\n", err)
+	}
+	fmt.Println("Ping redis client:", pong)
+
 	log.Println("Api started listening", apiHost, "...")
-	err := http.ListenAndServe(os.Getenv("WAPI_HOST"), router)
+	err = http.ListenAndServe(os.Getenv("WAPI_HOST"), router)
 	if err != nil {
 		log.Fatalf("error saving session: %v\n", err)
 	}
@@ -69,7 +86,26 @@ func (handler *waHandler) HandleError(err error) {
 	}
 }
 
+func messageAlreadySent(messageId string) bool {
+	_, err := redisClient.Get("wapi_sent_message:" + messageId).Result()
+	if err != nil {
+		return false
+	}
+	return true
+}
+
 func (handler *waHandler) HandleTextMessage(message whatsapp.TextMessage) {
+
+	fmt.Println("Income message to wapi service, time:", time.Now().String())
+	fmt.Println("Message:", message)
+	fmt.Println()
+
+	if messageAlreadySent(message.Info.Id) {
+		fmt.Println("Attempt to send message which was sent earlier, time:", time.Now().String())
+		fmt.Println("Message:", message)
+		fmt.Println()
+		return
+	}
 
 	if handler.initTimestamp == 0 {
 		handler.initTimestamp = uint64(time.Now().Unix())
@@ -97,8 +133,17 @@ func (handler *waHandler) HandleTextMessage(message whatsapp.TextMessage) {
 		fmt.Println("errorination happened getting the response", err)
 		return
 	}
-	fmt.Println("Message sent to", webhookUrl)
+
+	err = redisClient.Set("wapi_sent_message:"+message.Info.Id, time.Now().String(), time.Hour*24*30).Err()
+	if err != nil {
+		fmt.Println("Can't store message id in redis", err)
+	}
+	fmt.Println("Message id stored in redis:", message.Info.Id)
+	fmt.Println()
+
+	fmt.Println("Message sent to", webhookUrl, "time", time.Now().String())
 	fmt.Println("Message", message)
+	fmt.Println()
 
 	defer resp.Body.Close()
 	_, err = ioutil.ReadAll(resp.Body)
@@ -120,6 +165,9 @@ type RegisterSessionRequest struct {
 }
 
 func gettingMessages(wac *whatsapp.Conn, sessionName string) {
+
+	fmt.Println("gettingMessages called, time:", time.Now().String())
+	fmt.Println()
 
 	wac.AddHandler(&waHandler{wac, sessionName, 0})
 
@@ -145,6 +193,9 @@ func gettingMessages(wac *whatsapp.Conn, sessionName string) {
 }
 
 func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
+
+	fmt.Println("sendMessage called, time:", time.Now().String())
+	fmt.Println()
 
 	decoder := json.NewDecoder(request.Body)
 	var msgReq SendMessageRequest
@@ -201,6 +252,10 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 	}
 
 	wac.Send(message)
+
+	fmt.Println("Message sendeded, time:", time.Now().String())
+	fmt.Println("Message:", message)
+	fmt.Println()
 }
 
 var wacs = make(map[string]*whatsapp.Conn)

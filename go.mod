@@ -3,6 +3,7 @@ module github.com/Rhymen/go-whatsapp
 require (
 	github.com/bitly/go-simplejson v0.5.0
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
+	github.com/go-redis/redis/v7 v7.0.0-beta.4
 	github.com/golang/protobuf v1.3.0
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.0
