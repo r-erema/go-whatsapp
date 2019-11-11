@@ -246,6 +246,7 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 	message := whatsapp.TextMessage{
 		Info: whatsapp.MessageInfo{
 			RemoteJid:     msgReq.Chat_id,
+			SenderJid:     wac.Info.Wid,
 			QuotedMessage: *quotedMessage, //you also must send a valid QuotedMessageID
 		},
 		Text: msgReq.Text,
