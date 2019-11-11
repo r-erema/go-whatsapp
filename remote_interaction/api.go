@@ -251,7 +251,13 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 		Text: msgReq.Text,
 	}
 
-	wac.Send(message)
+	_, err = wac.Send(message)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error logging in: %v\n", err)
+	}
+	responseBody, err := json.Marshal(&message)
+	responseWriter.Header().Set("Content-Type", "application/json")
+	responseWriter.Write(responseBody)
 
 	fmt.Println("Message sendeded, time:", time.Now().String())
 	fmt.Println("Message:", message)
