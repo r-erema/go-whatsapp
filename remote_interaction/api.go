@@ -58,7 +58,7 @@ func main() {
 	fmt.Println("Ping redis client:", pong)
 
 	log.Println("Api started listening", apiHost, "...")
-	err = http.ListenAndServe("0.0.0.0", router)
+	err = http.ListenAndServe("0.0.0.0"+os.Getenv("WAPI_PORT"), router)
 	if err != nil {
 		log.Fatalf("error saving session: %v\n", err)
 	}
