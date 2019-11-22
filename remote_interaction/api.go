@@ -21,18 +21,12 @@ import (
 	"time"
 )
 
-var apiHost = os.Getenv("WAPI_HOST")
-
 const STATIC_DIR = "remote_interaction/static/"
 const STATIC_URL_PATH = "/static/"
 
 var redisClient *redis.Client
 
 func main() {
-
-	if apiHost == "" {
-		log.Fatalf("Env var `WAPI_HOST` not set")
-	}
 
 	redisHost := os.Getenv("REDIS_HOST")
 	if redisHost == "" {
@@ -57,8 +51,9 @@ func main() {
 	}
 	fmt.Println("Ping redis client:", pong)
 
-	log.Println("Api started listening", apiHost, "...")
-	err = http.ListenAndServe("0.0.0.0"+os.Getenv("WAPI_PORT"), router)
+	host := "0.0.0.0:80"
+	log.Println("Api started listening", host, "...")
+	err = http.ListenAndServe(host, router)
 	if err != nil {
 		log.Fatalf("error saving session: %v\n", err)
 	}

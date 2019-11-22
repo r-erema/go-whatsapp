@@ -28,10 +28,10 @@ func Login(wac *whatsapp.Conn, sessionName string) error {
 				_ = fmt.Errorf("can't create qr code: %v\n", err)
 			}
 			qrUrl := url.URL{
-				Scheme: 	"http",
-				Host:       apiHost,
-				Path:       "get-qr-code",
-				RawQuery:   "session_name=" + sessionName,
+				Scheme:   "http",
+				Host:     os.Getenv("WAPI_URL"),
+				Path:     "get-qr-code",
+				RawQuery: "session_name=" + sessionName,
 			}
 			fmt.Println("Please, scan QR code in next url to log in:", qrUrl.String())
 		}()
