@@ -51,9 +51,18 @@ func main() {
 	}
 	fmt.Println("Ping redis client:", pong)
 
-	host := "0.0.0.0:443"
-	log.Println("Api started listening", host, "...")
-	err = http.ListenAndServeTLS(host, os.Getenv("CERT_FILE_PATH"), os.Getenv("CERT_KEY_PATH"), router)
+	certFilePath := os.Getenv("CERT_FILE_PATH")
+	certKeyPath := os.Getenv("CERT_KEY_PATH")
+	if certFilePath != "" && certKeyPath != "" {
+		host := "0.0.0.0:443"
+		log.Println("Api started listening", host, "...")
+		err = http.ListenAndServeTLS(host, certFilePath, certKeyPath, router)
+	} else {
+		host := "0.0.0.0:80"
+		log.Println("Api started listening", host, "...")
+		err = http.ListenAndServe(host, router)
+	}
+
 	if err != nil {
 		log.Fatalf("error saving session: %v\n", err)
 	}
@@ -205,6 +214,10 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 	if ok {
 		if !wac.IsConnected() {
 			wac, err_conn = whatsapp.NewConn(20 * time.Second)
+			if wac.Info == nil {
+				fmt.Fprintf(os.Stderr, "wac.Info is nil")
+				return
+			}
 			if err_conn != nil {
 				fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
 				return
@@ -212,6 +225,14 @@ func sendMessage(responseWriter http.ResponseWriter, request *http.Request) {
 		}
 	} else {
 		wac, err_conn = whatsapp.NewConn(20 * time.Second)
+		if wac.Info == nil {
+			fmt.Fprintf(os.Stderr, "wac.Info is nil")
+			return
+		}
+		if err_conn != nil {
+			fmt.Fprintf(os.Stderr, "error creating connection: %v\n", err_conn)
+			return
+		}
 		wacs[msgReq.Session_name] = wac
 	}
 
@@ -308,6 +329,7 @@ func registerSession(responseWriter http.ResponseWriter, request *http.Request) 
 
 	json := simplejson.New()
 	json.Set("ok", true)
+	json.Set("jid", wac)
 
 	payload, err := json.MarshalJSON()
 	if err != nil {
