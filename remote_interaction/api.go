@@ -51,9 +51,9 @@ func main() {
 	}
 	fmt.Println("Ping redis client:", pong)
 
-	host := "0.0.0.0:80"
+	host := "0.0.0.0:443"
 	log.Println("Api started listening", host, "...")
-	err = http.ListenAndServe(host, router)
+	err = http.ListenAndServeTLS(host, os.Getenv("CERT_FILE_PATH"), os.Getenv("CERT_KEY_PATH"), router)
 	if err != nil {
 		log.Fatalf("error saving session: %v\n", err)
 	}
