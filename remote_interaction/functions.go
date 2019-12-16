@@ -36,6 +36,10 @@ func Login(wac *whatsapp.Conn, sessionName string) error {
 			fmt.Println("Please, scan QR code in next url to log in:", qrUrl.String())
 		}()
 		session, err = wac.Login(qr)
+		removeQrError := os.Remove(resolveQrCodesFilePath(sessionName))
+		if removeQrError != nil {
+			_ = fmt.Errorf("error removing qr image: %v\n", removeQrError)
+		}
 		if err != nil {
 			return fmt.Errorf("error during login: %v\n", err)
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/Rhymen/go-whatsapp/binary/proto"
 	"github.com/bitly/go-simplejson"
 	"github.com/go-redis/redis/v7"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"html/template"
 	"io/ioutil"
@@ -33,7 +34,14 @@ func main() {
 		panic("Env var `REDIS_HOST` not set")
 	}
 
+	cors := handlers.CORS(
+		handlers.AllowedHeaders([]string{"content-type"}),
+		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowCredentials(),
+	)
+
 	router := mux.NewRouter().StrictSlash(true)
+	router.Use(cors)
 	router.
 		PathPrefix(STATIC_URL_PATH).
 		Handler(http.StripPrefix(STATIC_URL_PATH, http.FileServer(http.Dir("./"+STATIC_DIR))))
@@ -41,6 +49,7 @@ func main() {
 	router.HandleFunc("/send-message/", sendMessage).Methods("POST")
 	router.HandleFunc("/register-session/", registerSession).Methods("POST")
 	router.HandleFunc("/get-qr-code/", getQrCode).Methods("GET")
+	router.HandleFunc("/session-info/", sessionStatus).Methods("GET")
 
 	redisClient = redis.NewClient(&redis.Options{
 		Addr: redisHost,
@@ -54,7 +63,7 @@ func main() {
 	certFilePath := os.Getenv("CERT_FILE_PATH")
 	certKeyPath := os.Getenv("CERT_KEY_PATH")
 	if certFilePath != "" && certKeyPath != "" {
-		host := "0.0.0.0:443"
+		host := "0.0.0.0:5555"
 		log.Println("Api started listening", host, "...")
 		err = http.ListenAndServeTLS(host, certFilePath, certKeyPath, router)
 	} else {
@@ -72,6 +81,12 @@ type waHandler struct {
 	c             *whatsapp.Conn
 	sessionName   string
 	initTimestamp uint64
+}
+
+func setupCORS(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	(*w).Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 }
 
 func (handler *waHandler) HandleError(err error) {
@@ -193,6 +208,45 @@ func gettingMessages(wac *whatsapp.Conn, sessionName string) {
 	}
 	if err := WriteSession(session, sessionName); err != nil {
 		log.Fatalf("error saving session: %v", err)
+	}
+}
+
+func sessionStatus(responseWriter http.ResponseWriter, request *http.Request) {
+
+	keys, ok := request.URL.Query()["sid"]
+	if !ok || len(keys[0]) < 1 {
+		log.Println("Url Param 'sid' is missing")
+		return
+	}
+
+	sessionId := keys[0]
+	json := simplejson.New()
+	responseWriter.Header().Set("Content-Type", "application/json")
+
+	wac, ok := wacs[sessionId]
+	if !ok {
+		json.Set("ok", false)
+		json.Set("message", "Session not found")
+		payload, err := json.MarshalJSON()
+		_, err = responseWriter.Write(payload)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "error write response: %v\n", err)
+			return
+		}
+		return
+	}
+
+	json.Set("ok", true)
+	json.Set("session_info", wac)
+	payload, err := json.MarshalJSON()
+	if err != nil {
+		log.Println(err)
+	}
+
+	_, err = responseWriter.Write(payload)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "error write response: %v\n", err)
+		return
 	}
 }
 
@@ -319,29 +373,29 @@ func registerSession(responseWriter http.ResponseWriter, request *http.Request) 
 		wacs[msgReq.SessionId] = wac
 	}*/
 
+	json := simplejson.New()
+	responseWriter.Header().Set("Content-Type", "application/json")
+	json.Set("jid", wac)
 	if !wac.IsLoggedIn() {
 		err = Login(wac, msgReq.SessionId)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error logging in: %v\n", err)
+			json.Set("ok", false)
+			json.Set("reason", fmt.Sprintf("%s", err))
+			payload, err := json.MarshalJSON()
+
+			if err != nil {
+				log.Println(err)
+			}
+			responseWriter.Write(payload)
 			return
 		}
 	}
 
-	json := simplejson.New()
 	json.Set("ok", true)
-	json.Set("jid", wac)
-
 	payload, err := json.MarshalJSON()
 	if err != nil {
 		log.Println(err)
-	}
-
-	responseWriter.Header().Set("Content-Type", "application/json")
-	responseWriter.Write(payload)
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error logging in: %v\n", err)
-		return
 	}
 
 	var wg sync.WaitGroup
@@ -351,6 +405,13 @@ func registerSession(responseWriter http.ResponseWriter, request *http.Request) 
 		gettingMessages(wac, msgReq.SessionId)
 	}()
 	wg.Wait()
+
+	_, err = responseWriter.Write(payload)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error write response: %v\n", err)
+		return
+	}
+
 }
 
 func getQrCode(responseWriter http.ResponseWriter, request *http.Request) {
